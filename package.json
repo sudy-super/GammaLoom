@@ -28,7 +28,7 @@
     "@types/react-router-dom": "^5.3.3",
     "@typescript-eslint/eslint-plugin": "^8.48.0",
     "@typescript-eslint/parser": "^8.48.0",
-    "@vitejs/plugin-react": "^4.3.3",
+    "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.20",
     "electron": "^33.2.0",
     "electron-builder": "^24.13.3",
