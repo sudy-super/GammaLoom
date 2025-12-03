@@ -25,6 +25,7 @@
     "@playwright/test": "^1.48.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/react-router-dom": "^5.3.3",
     "@typescript-eslint/eslint-plugin": "^8.48.0",
     "@typescript-eslint/parser": "^8.48.0",
     "@vitejs/plugin-react": "^4.3.3",
@@ -48,5 +49,9 @@
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6",
     "vitest": "^2.1.5"
+  },
+  "dependencies": {
+    "glslCanvas": "^0.2.6",
+    "react-router-dom": "^7.9.6"
   }
 }

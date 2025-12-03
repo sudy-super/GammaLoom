@@ -8,6 +8,7 @@ export type RendererBridge = {
   getMixState: () => Promise<MixState>
   updateDeck: (_deckId: DeckId, _patch: Partial<DeckState>) => Promise<MixState>
   setMasterOpacity: (_value: number) => Promise<MixState>
+  setCrossfader: (_target: 'ab' | 'ac' | 'bd' | 'cd', _value: number) => Promise<MixState>
   listAssets: () => Promise<Asset[]>
 }
 
@@ -22,6 +23,8 @@ export const exposeRendererBridge = () => {
     updateDeck: (deckId, patch) =>
       ipcRenderer.invoke(IPC_CHANNELS.DECK_UPDATE, { deckId, patch }),
     setMasterOpacity: (value) => ipcRenderer.invoke(IPC_CHANNELS.MASTER_OPACITY, value),
+    setCrossfader: (target, value) =>
+      ipcRenderer.invoke(IPC_CHANNELS.CROSS_FADER, { target, value }),
     listAssets: () => ipcRenderer.invoke(IPC_CHANNELS.ASSETS_LIST),
   }
 

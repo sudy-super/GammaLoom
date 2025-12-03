@@ -33,5 +33,5 @@ yarn.lock
 /playwright/.cache/
 
 
-glsl/
-mp4/
+assets/glsl/
+assets/mp4/

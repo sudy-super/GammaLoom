@@ -40,6 +40,10 @@ export class MixEngine extends EventEmitter {
       sanitized.playing = Boolean(patch.playing)
     }
 
+    if (patch.enabled !== undefined) {
+      sanitized.enabled = Boolean(patch.enabled)
+    }
+
     this.state = {
       ...this.state,
       decks: this.state.decks.map((deck) => (deck.id === id ? sanitized : deck)),
@@ -55,6 +59,22 @@ export class MixEngine extends EventEmitter {
     }
 
     this.state = { ...this.state, masterOpacity: next }
+    return this.emitChange()
+  }
+
+  setCrossfader(target: 'ab' | 'ac' | 'bd' | 'cd', value: number): MixState {
+    const nextValue = clamp(Number(value), 0, 1)
+    const keyMap: Record<typeof target, keyof MixState> = {
+      ab: 'crossfaderAB',
+      ac: 'crossfaderAC',
+      bd: 'crossfaderBD',
+      cd: 'crossfaderCD',
+    }
+    const stateKey = keyMap[target]
+    if (this.state[stateKey] === nextValue) {
+      return this.getState()
+    }
+    this.state = { ...this.state, [stateKey]: nextValue }
     return this.emitChange()
   }
 

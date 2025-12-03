@@ -5,7 +5,7 @@ Electron + React + TypeScript application that delivers the two-window VJ workfl
 ## Features
 
 - **MixEngine @ Electron main**: centralizes `MixState`, validates deck updates, and broadcasts changes over IPC.
-- **Assets manager**: scans `../mp4` (or paths configured via `VJ_ASSET_ROOT`) for videos/images and exposes them to the Control UI.
+- **Assets manager**: scans `assets/mp4` (video/image) and `assets/glsl` (shader snippets) by default, or any folders provided via `VJ_ASSET_ROOT` / `VJ_SHADER_ROOT`, and exposes them to the Control UI.
 - **Dual renderers**: Control UI for operators, Projection UI for fullscreen playback, both sharing a typed IPC bridge.
 - **Canvas compositing**: Master Preview and Projection reuse a shared `MixCanvas` to layer hidden `<video>` buffers onto `<canvas>` with per-deck opacity and speed.
 - **Strict toolchain**: Vite + React 18, TypeScript `strict`, ESLint (flat config) + Prettier, ready for future GLSL/WebGL expansion.
@@ -32,9 +32,9 @@ During `npm run dev` two BrowserWindows are opened:
 
 ## Assets
 
-- Default search path: `../mp4` relative to the `vj-tool` directory (bundled repo already contains `mp4/footage`, `mp4/overlay`).
-- Override via env: `VJ_ASSET_ROOT="/path/to/clips:/another/path" npm run dev` (use platform path delimiter).
-- Supported extensions: `.mp4`, `.mov`, `.m4v`, `.webm` (video) and `.png`, `.jpg`, `.jpeg` (images). Images are currently loaded as still layers.
+- Default search paths: `assets/mp4` (footage/overlay) and `assets/glsl` relative to the repo root.
+- Override via env: `VJ_ASSET_ROOT="/path/to/clips" VJ_SHADER_ROOT="/path/to/glsl" npm run dev` (use platform path delimiter for multiples).
+- Supported extensions: `.mp4`, `.mov`, `.m4v`, `.webm` (video), `.png`, `.jpg`, `.jpeg` (images), and `.glsl/.frag/.fs` for shaders.
 
 ## Directory Layout
 
@@ -70,7 +70,7 @@ Channel | Direction | Payload
 ## Control Workflow
 
 1. Pick the active deck (A–D). The column border lights up cyan.
-2. Load footage from the Content Browser (assets pulled from `mp4`). Clicking a clip assigns it to the active deck.
+2. Load footage from the Content Browser (assets pulled from `assets/mp4`). Clicking a clip assigns it to the active deck.
 3. Use the Opacity and Speed faders per deck; press **Play/Pause** or **Fade Out** to manage playback.
 4. The Master Preview shows the composite feed at reduced resolution. Adjust the **Master Opacity** to fade the entire mix.
 5. Projection window mirrors the MixEngine output at canvas scale; attach to projector/LED wall.

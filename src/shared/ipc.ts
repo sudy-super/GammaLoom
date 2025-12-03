@@ -5,6 +5,7 @@ export const IPC_CHANNELS = {
   MIX_GET_STATE: 'mix:getState',
   DECK_UPDATE: 'deck:update',
   MASTER_OPACITY: 'mix:setMasterOpacity',
+  CROSS_FADER: 'mix:setCrossfader',
   ASSETS_LIST: 'assets:list',
 } as const;
 
@@ -14,6 +15,11 @@ export type DeckUpdatePayload = {
 };
 
 export type MasterOpacityPayload = {
+  value: number;
+};
+
+export type CrossfaderPayload = {
+  target: 'ab' | 'ac' | 'bd' | 'cd';
   value: number;
 };
 

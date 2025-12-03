@@ -11,9 +11,16 @@ export const createDefaultDeck = (id: DeckId): DeckState => ({
   opacity: 0,
   speed: 1,
   playing: false,
+  assetId: null,
+  assetType: null,
+  enabled: false,
 });
 
 export const createInitialMixState = (): MixState => ({
   decks: DECK_IDS.map((id) => createDefaultDeck(id)),
   masterOpacity: 1,
+  crossfaderAB: 0.5,
+  crossfaderAC: 0.5,
+  crossfaderBD: 0.5,
+  crossfaderCD: 0.5,
 });

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, screen } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import os from 'node:os'
@@ -6,7 +6,7 @@ import { MixEngine } from './mixEngine'
 import { AssetsManager } from './assetsManager'
 import { createControlWindow, createProjectionWindow } from './windows'
 import { IPC_CHANNELS } from '@shared/ipc'
-import type { DeckUpdatePayload } from '@shared/ipc'
+import type { CrossfaderPayload, DeckUpdatePayload } from '@shared/ipc'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.APP_ROOT = path.join(__dirname, '../..')
@@ -35,6 +35,7 @@ let controlWindow: BrowserWindow | null = null
 let projectionWindow: BrowserWindow | null = null
 
 app.whenReady().then(() => {
+  registerAssetProtocol()
   createWindows()
   registerIpcHandlers()
 })
@@ -74,15 +75,26 @@ const registerIpcHandlers = () => {
     mixEngine.setMasterOpacity(value),
   )
 
+  ipcMain.handle(IPC_CHANNELS.CROSS_FADER, (_event, payload: CrossfaderPayload) =>
+    mixEngine.setCrossfader(payload.target, payload.value),
+  )
+
   ipcMain.handle(IPC_CHANNELS.ASSETS_LIST, () => assetsManager.listAssets())
 }
 
 const createWindows = () => {
+  const primaryDisplay = screen.getPrimaryDisplay()
+  const { width: workWidth, height: workHeight } = primaryDisplay.workAreaSize
+  const controlWidth = Math.min(workWidth, 1920)
+  const controlHeight = Math.min(workHeight, 1100)
+
   controlWindow = createControlWindow({
     title: 'GammaLoom VJ Control',
     preloadPath: PRELOAD_BUNDLE,
     rendererDist: RENDERER_DIST,
     devServerUrl: VITE_DEV_SERVER_URL,
+    width: controlWidth,
+    height: controlHeight,
   })
 
   projectionWindow = createProjectionWindow({
@@ -109,14 +121,44 @@ const broadcastState = (state = mixEngine.getState()) => {
 }
 
 function resolveAssetRoots(): string[] {
-  const envPath = process.env.VJ_ASSET_ROOT
-  if (envPath) {
-    return envPath
+  const roots = new Set<string>()
+
+  const register = (candidate: string | undefined) => {
+    if (!candidate) return
+    const resolved = path.resolve(candidate)
+    roots.add(resolved)
+  }
+
+  const addFromEnv = (value?: string) => {
+    if (!value) return
+    value
       .split(path.delimiter)
       .map((item) => item.trim())
       .filter(Boolean)
-      .map((item) => path.resolve(item))
+      .forEach((item) => register(item))
   }
-  const fallback = path.resolve(process.cwd(), '../mp4')
-  return [fallback]
+
+  addFromEnv(process.env.VJ_ASSET_ROOT)
+  addFromEnv(process.env.VJ_SHADER_ROOT)
+
+  if (roots.size === 0) {
+    register(path.join(process.cwd(), 'assets/mp4'))
+    register(path.join(process.cwd(), 'assets/glsl'))
+  }
+
+  return Array.from(roots)
+}
+
+function registerAssetProtocol() {
+  protocol.registerFileProtocol('vjasset', (request, callback) => {
+    try {
+      const normalized = request.url.replace('vjasset://', 'file://')
+      const parsed = new URL(normalized)
+      const decoded = decodeURIComponent(parsed.pathname)
+      callback({ path: decoded })
+    } catch (error) {
+      console.error('[vjasset] Failed to resolve path', request.url, error)
+      callback({ path: '' })
+    }
+  })
 }

@@ -9,14 +9,21 @@ export type DeckState = {
   opacity: number;
   speed: number;
   playing: boolean;
+  assetId: string | null;
+  assetType: 'video' | 'shader' | 'generative' | null;
+  enabled: boolean;
 };
 
 export type MixState = {
   decks: DeckState[];
   masterOpacity: number;
+  crossfaderAB: number;
+  crossfaderAC: number;
+  crossfaderBD: number;
+  crossfaderCD: number;
 };
 
-export type AssetKind = 'video' | 'image';
+export type AssetKind = 'video' | 'image' | 'shader';
 
 export type Asset = {
   id: string;
@@ -24,4 +31,6 @@ export type Asset = {
   url: string;
   name: string;
   kind: AssetKind;
+  folder?: string;
+  code?: string;
 };

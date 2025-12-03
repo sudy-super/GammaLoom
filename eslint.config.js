@@ -30,6 +30,7 @@ export default tseslint.config(
     rules: {
       ...js.configs.recommended.rules,
       'no-unused-vars': 'off',
+      'no-undef': 'off',
       'react/prop-types': 'off',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
