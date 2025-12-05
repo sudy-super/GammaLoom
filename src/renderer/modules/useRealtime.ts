@@ -138,7 +138,8 @@ export function useRealtime(_role: 'viewer' | 'controller', _handlers: RealtimeH
   const requestDeckToggle = useCallback(
     (deckKey: DeckKey, nextPlaying?: boolean) => {
       const deck = latestMixRef.current.decks[deckKey]
-      const shouldPlay = typeof nextPlaying === 'boolean' ? nextPlaying : !deck.enabled
+      const currentPlaying = typeof deck.playing === 'boolean' ? deck.playing : Boolean(deck.enabled)
+      const shouldPlay = typeof nextPlaying === 'boolean' ? nextPlaying : !currentPlaying
       updateDeck(deckKey, { playing: shouldPlay })
     },
     [updateDeck],

@@ -761,7 +761,7 @@ const ControlPage = () => {
   const handleDeckPlaybackToggle = useCallback(
     (deckKey: DeckKey) => {
       const deck = decks[deckKey];
-      if (!deck || deck.type !== 'video' || !deck.assetId) {
+      if (!deck || deck.type !== 'video') {
         return;
       }
       const remoteState = remoteDeckMediaStates[deckKey];
@@ -770,9 +770,39 @@ const ControlPage = () => {
         remoteState?.isPlaying ??
         deckStates[deckKey]?.isPlaying ??
         false;
-      requestDeckToggle(deckKey, !currentPlaying);
+      const nextPlaying = !currentPlaying;
+      const hasSource = Boolean(deck.assetId || deck.sourceUrl || remoteState?.src || deckStates[deckKey]?.src);
+      if (!hasSource) {
+        return;
+      }
+
+      const deckContainerId = `deck-${deckKey}`;
+      const masterContainerId = `master-${deckKey}`;
+      if (nextPlaying) {
+        void playVideo(deckContainerId);
+        void playVideo(masterContainerId);
+      } else {
+        pauseVideo(deckContainerId);
+        pauseVideo(masterContainerId);
+      }
+
+      setDeckStates((previous) => {
+        const existing = previous[deckKey] ?? createDefaultDeckMediaState()[deckKey];
+        if (existing.isPlaying === nextPlaying) {
+          return previous;
+        }
+        return {
+          ...previous,
+          [deckKey]: {
+            ...existing,
+            isPlaying: nextPlaying,
+          },
+        };
+      });
+
+      requestDeckToggle(deckKey, nextPlaying);
     },
-    [deckStates, decks, remoteDeckMediaStates, requestDeckToggle],
+    [deckStates, decks, pauseVideo, playVideo, remoteDeckMediaStates, requestDeckToggle, setDeckStates],
   );
 
   const handleDeckPlaybackScrub = useCallback(
