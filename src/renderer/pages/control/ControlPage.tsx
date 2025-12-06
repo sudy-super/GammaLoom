@@ -399,19 +399,26 @@ const ControlPage = () => {
       const masterManagerState = getState(masterId);
 
       const playRate = Number.isFinite(remoteState.playRate) ? remoteState.playRate : 1;
-      const remoteHasTimeline =
-        (typeof remoteState.position === 'number' && Number.isFinite(remoteState.position)) ||
-        (Number.isFinite(remoteState.updatedAt) && remoteState.updatedAt > 0);
+      const hasExplicitPosition =
+        typeof remoteState.position === 'number' && Number.isFinite(remoteState.position);
+      const hasBasePosition =
+        typeof remoteState.basePosition === 'number' && Number.isFinite(remoteState.basePosition);
+      const remoteHasTimeline = hasExplicitPosition || hasBasePosition;
 
       if (remoteHasTimeline) {
-        const basePosition = Number.isFinite(remoteState.basePosition)
-          ? remoteState.basePosition
-          : 0;
+        // avoid rewinding on stop unless an explicit position is provided
+        if (!remoteState.isPlaying && !hasExplicitPosition) {
+          return;
+        }
+
+        const basePosition = hasBasePosition ? remoteState.basePosition : 0;
         const updatedAt = Number.isFinite(remoteState.updatedAt)
           ? remoteState.updatedAt
           : nowSeconds;
         const elapsed = remoteState.isPlaying ? Math.max(0, nowSeconds - updatedAt) : 0;
-        const targetPosition = Math.max(0, basePosition + elapsed * playRate);
+        const targetPosition = hasExplicitPosition
+          ? Math.max(0, remoteState.position ?? 0)
+          : Math.max(0, basePosition + elapsed * playRate);
 
         const knownDuration = deckDurationsRef.current[deckKey];
         if (knownDuration && Number.isFinite(knownDuration) && knownDuration > 0) {
@@ -480,20 +487,22 @@ const ControlPage = () => {
         const current = previous[deckKey] ?? createDefaultDeckMediaState()[deckKey];
         const duration = deckDurationsRef.current[deckKey] || remoteState.duration || 0;
         let progress = current.progress;
-        const hasTimeline =
-          (typeof remoteState.position === 'number' && Number.isFinite(remoteState.position)) ||
-          (Number.isFinite(remoteState.updatedAt) && remoteState.updatedAt > 0);
+        const hasExplicitPosition =
+          typeof remoteState.position === 'number' && Number.isFinite(remoteState.position);
+        const hasBasePosition =
+          typeof remoteState.basePosition === 'number' && Number.isFinite(remoteState.basePosition);
+        const hasTimeline = hasExplicitPosition || hasBasePosition;
 
         if (hasTimeline && duration && Number.isFinite(duration) && duration > 0) {
-          const basePosition = Number.isFinite(remoteState.basePosition)
-            ? remoteState.basePosition
-            : 0;
+          const basePosition = hasBasePosition ? remoteState.basePosition : 0;
           const playRate = Number.isFinite(remoteState.playRate) ? remoteState.playRate : 1;
           const updatedAt = Number.isFinite(remoteState.updatedAt)
             ? remoteState.updatedAt
             : nowSeconds;
           const elapsed = remoteState.isPlaying ? Math.max(0, nowSeconds - updatedAt) : 0;
-          const position = Math.max(0, basePosition + elapsed * playRate);
+          const position = hasExplicitPosition
+            ? Math.max(0, remoteState.position ?? 0)
+            : Math.max(0, basePosition + elapsed * playRate);
           const percent = (position / duration) * 100;
           if (Number.isFinite(percent)) {
             progress = Math.max(0, Math.min(100, percent));
@@ -631,7 +640,7 @@ const ControlPage = () => {
 
       const [type, assetId] = value.split(':', 2);
       if (type === 'glsl' && assetId) {
-        sendDeckUpdate(deck, { type: 'shader', assetId, opacity: 1 });
+        sendDeckUpdate(deck, { type: 'shader', assetId, opacity: 1, enabled: true });
         requestDeckSource(deck, null);
         setDeckStates((previous) => ({
           ...previous,
@@ -646,6 +655,7 @@ const ControlPage = () => {
         const updatePayload: Partial<MixDeck> = {
           type: 'video',
           assetId,
+          enabled: true,
         };
         if (currentDeck?.type !== 'video' || currentDeck.opacity == null) {
           updatePayload.opacity = 1;
@@ -764,45 +774,19 @@ const ControlPage = () => {
       if (!deck || deck.type !== 'video') {
         return;
       }
-      const remoteState = remoteDeckMediaStates[deckKey];
-      const currentPlaying =
-        (typeof deck.playing === 'boolean' ? deck.playing : undefined) ??
-        remoteState?.isPlaying ??
-        deckStates[deckKey]?.isPlaying ??
-        false;
-      const nextPlaying = !currentPlaying;
-      const hasSource = Boolean(deck.assetId || deck.sourceUrl || remoteState?.src || deckStates[deckKey]?.src);
+
+      // Rely on MixEngine as the single source of truth for playback state.
+      const hasSource = Boolean(deck.assetId || deck.sourceUrl || deckStates[deckKey]?.src);
       if (!hasSource) {
         return;
       }
 
-      const deckContainerId = `deck-${deckKey}`;
-      const masterContainerId = `master-${deckKey}`;
-      if (nextPlaying) {
-        void playVideo(deckContainerId);
-        void playVideo(masterContainerId);
-      } else {
-        pauseVideo(deckContainerId);
-        pauseVideo(masterContainerId);
-      }
-
-      setDeckStates((previous) => {
-        const existing = previous[deckKey] ?? createDefaultDeckMediaState()[deckKey];
-        if (existing.isPlaying === nextPlaying) {
-          return previous;
-        }
-        return {
-          ...previous,
-          [deckKey]: {
-            ...existing,
-            isPlaying: nextPlaying,
-          },
-        };
-      });
+      const currentPlaying = typeof deck.playing === 'boolean' ? deck.playing : false;
+      const nextPlaying = !currentPlaying;
 
       requestDeckToggle(deckKey, nextPlaying);
     },
-    [deckStates, decks, pauseVideo, playVideo, remoteDeckMediaStates, requestDeckToggle, setDeckStates],
+    [deckStates, decks, requestDeckToggle],
   );
 
   const handleDeckPlaybackScrub = useCallback(

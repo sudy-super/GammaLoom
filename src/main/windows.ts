@@ -32,7 +32,7 @@ export const createProjectionWindow = (params: Omit<WindowParams, 'hash'> & { ha
     height: params.height ?? 720,
     fullscreen: params.fullscreen ?? false,
     ...params,
-    hash: params.hash ?? 'projection',
+    hash: params.hash ?? 'viewer',
   })
 
 const createWindow = ({

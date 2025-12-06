@@ -21,6 +21,7 @@ interface VideoLayerProps {
   blendMode?: BlendMode;
   mediaState?: DeckTimelineState;
   registerContainer?: (element: HTMLDivElement | null) => void;
+  disableTimeSync?: boolean;
 }
 
 export function VideoFallbackLayer({
@@ -30,6 +31,7 @@ export function VideoFallbackLayer({
   blendMode,
   mediaState,
   registerContainer,
+  disableTimeSync = false,
 }: VideoLayerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const handleVideoRef = useCallback(
@@ -69,7 +71,7 @@ export function VideoFallbackLayer({
       attemptPlay();
     };
 
-    if (shouldPlay) {
+    if (shouldPlay && !disableTimeSync) {
       if (video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
         attemptPlay();
       } else {
@@ -82,7 +84,7 @@ export function VideoFallbackLayer({
     return () => {
       video.removeEventListener('canplay', handleCanPlay);
     };
-  }, [resolvedSrc, shouldPlay]);
+  }, [disableTimeSync, resolvedSrc, shouldPlay]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -101,6 +103,10 @@ export function VideoFallbackLayer({
   }, [mediaState, shouldPlay]);
 
   useEffect(() => {
+    if (disableTimeSync) {
+      return;
+    }
+
     const container = containerRef.current;
     const video = container?.querySelector('video') ?? null;
     if (!video || !mediaState) {
@@ -108,9 +114,7 @@ export function VideoFallbackLayer({
     }
 
     const nowSeconds = Date.now() / 1000;
-    const basePosition = Number.isFinite(mediaState.basePosition)
-      ? mediaState.basePosition
-      : 0;
+    const basePosition = Number.isFinite(mediaState.basePosition) ? mediaState.basePosition : 0;
     const playRate = Number.isFinite(mediaState.playRate) ? mediaState.playRate : 1;
     const updatedAt = Number.isFinite(mediaState.updatedAt) ? mediaState.updatedAt : nowSeconds;
     const elapsed = mediaState.isPlaying ? Math.max(0, nowSeconds - updatedAt) : 0;
@@ -153,9 +157,13 @@ export function VideoFallbackLayer({
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
     };
-  }, [mediaState, resolvedSrc]);
+  }, [disableTimeSync, mediaState, resolvedSrc]);
 
   useEffect(() => {
+    if (disableTimeSync) {
+      return;
+    }
+
     const container = containerRef.current;
     const video = container?.querySelector('video') ?? null;
     if (!video || !mediaState) {
@@ -170,7 +178,7 @@ export function VideoFallbackLayer({
         // ignore playback rate errors
       }
     }
-  }, [mediaState, resolvedSrc]);
+  }, [disableTimeSync, mediaState, resolvedSrc]);
 
   return (
     <div
@@ -198,14 +206,56 @@ interface ShaderLayerProps {
 }
 
 function ensurePrecision(code: string): string {
-  if (code.includes('precision')) {
-    return code;
-  }
-  return `#ifdef GL_ES
-precision mediump float;
-#endif
+  const needsPrecision = !/precision\s+mediump\s+float/.test(code);
+  const hasMain = /void\s+main\s*\(/.test(code);
+  const hasMainImage = /void\s+mainImage\s*\(\s*out\s+vec4\s+\w+\s*,\s*in\s+vec2\s+\w+\s*\)/.test(code);
 
-${code}`;
+  const prelude: string[] = [];
+  if (needsPrecision) {
+    prelude.push(`#ifdef GL_ES
+precision mediump float;
+#endif`);
+  }
+
+  // Common Shadertoy-style uniforms（足りないものだけ追加）
+  if (!/uniform\s+vec3\s+iResolution/.test(code)) {
+    prelude.push('uniform vec3 iResolution;');
+  }
+  if (!/uniform\s+float\s+iTime/.test(code)) {
+    prelude.push('uniform float iTime;');
+  }
+  if (!/uniform\s+vec4\s+iMouse/.test(code)) {
+    prelude.push('uniform vec4 iMouse;');
+  }
+  ['0', '1', '2', '3'].forEach((idx) => {
+    if (!new RegExp(`uniform\\s+sampler2D\\s+iChannel${idx}`).test(code)) {
+      prelude.push(`uniform sampler2D iChannel${idx};`);
+    }
+  });
+
+  // textureLod を WebGL1 でも動くようにフォールバック
+  if (code.includes('textureLod') && !/define\s+textureLod/.test(code)) {
+    prelude.push(`#ifdef GL_EXT_shader_texture_lod
+#extension GL_EXT_shader_texture_lod : enable
+#define textureLod texture2DLodEXT
+#else
+#define textureLod texture2D
+#endif`);
+  }
+
+  const body = hasMain
+    ? code
+    : hasMainImage
+      ? `${code}
+
+void main() {
+  vec4 color = vec4(0.0);
+  mainImage(color, gl_FragCoord.xy);
+  gl_FragColor = color;
+}`
+      : code;
+
+  return `${prelude.join('\n')}\n${body}`;
 }
 
 function getFrequencyBandEnergy(frequencyData: Uint8Array, startRatio: number, endRatio: number) {
@@ -227,8 +277,13 @@ export function ShaderFallbackLayer({
   blendMode,
   registerAudioHandler,
 }: ShaderLayerProps) {
+  const DUMMY_WHITE_PX =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/xcAAn8B9zZTSaIAAAAASUVORK5CYII=';
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sandboxRef = useRef<GlslCanvas | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number>(performance.now());
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -237,6 +292,14 @@ export function ShaderFallbackLayer({
     const resize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      if (sandboxRef.current) {
+        try {
+          sandboxRef.current.setUniform('iResolution', [canvas.width, canvas.height, 1]);
+          sandboxRef.current.setUniform('u_resolution', [canvas.width, canvas.height]);
+        } catch {
+          // ignore uniform errors during resize
+        }
+      }
     };
 
     resize();
@@ -245,6 +308,19 @@ export function ShaderFallbackLayer({
     const sandbox = new GlslCanvas(canvas);
     sandboxRef.current = sandbox;
     sandbox.load(ensurePrecision(shaderCode));
+    const setTex = (sandbox as unknown as { setTexture?: (name: string, src: string) => void }).setTexture;
+    if (typeof setTex === 'function') {
+      setTex('iChannel0', DUMMY_WHITE_PX);
+      setTex('iChannel1', DUMMY_WHITE_PX);
+      setTex('iChannel2', DUMMY_WHITE_PX);
+      setTex('iChannel3', DUMMY_WHITE_PX);
+    }
+
+    const syncResolution = () => {
+      sandboxRef.current?.setUniform('iResolution', [canvas.width, canvas.height, 1]);
+      sandboxRef.current?.setUniform('u_resolution', [canvas.width, canvas.height]);
+    };
+    syncResolution();
 
     let unregister = () => {};
     unregister = registerAudioHandler(layerKey, (audioData, sensitivity) => {
@@ -273,7 +349,23 @@ export function ShaderFallbackLayer({
       }
     });
 
+    const tick = (ts: number) => {
+      const t = (ts - startTimeRef.current) / 1000;
+      try {
+        sandboxRef.current?.setUniform('iTime', t);
+        sandboxRef.current?.setUniform('u_time', t);
+      } catch {
+        // ignore uniform errors during teardown
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+
     return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       unregister();
       sandbox.destroy();
       sandboxRef.current = null;

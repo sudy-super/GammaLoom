@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ControlSettings,
   DeckMediaStateIntent,
+  DeckTimelineState,
   DeckTimelineStateMap,
   FallbackAssets,
   FallbackLayer,
@@ -70,6 +71,7 @@ export function useRealtime(_role: 'viewer' | 'controller', _handlers: RealtimeH
     latestMixRef.current = converted
     setMixState(converted)
     setDeckMediaStates((previous) => {
+      const nowSeconds = Date.now() / 1000
       const next: DeckTimelineStateMap = { ...previous }
       let changed = false
       MIX_DECK_KEYS.forEach((key) => {
@@ -80,13 +82,24 @@ export function useRealtime(_role: 'viewer' | 'controller', _handlers: RealtimeH
           typeof rawDeck?.playing === 'boolean' ? rawDeck.playing : Boolean(rawDeck?.enabled)
         const existing = previous[key]
         const current = existing ?? createDefaultDeckTimelineState()
+        const basePosition = Number.isFinite(current.basePosition) ? current.basePosition : Number.NaN
+        const position = Number.isFinite(current.position) ? current.position : Number.NaN
+        const shouldResetClock = current.isPlaying !== targetPlaying || !Number.isFinite(current.updatedAt) || current.updatedAt <= 0
+        const updatedAt = shouldResetClock ? nowSeconds : current.updatedAt
+        const playRate =
+          typeof rawDeck?.speed === 'number' && Number.isFinite(rawDeck.speed) && rawDeck.speed > 0
+            ? rawDeck.speed
+            : current.playRate
         const nextState = {
           ...current,
           src: sourceUrl,
           isPlaying: targetPlaying,
           error: false,
           isLoading: false,
-          playRate: 1,
+          playRate: playRate ?? 1,
+          basePosition,
+          position,
+          updatedAt,
         }
 
         const didChange =
@@ -94,7 +107,10 @@ export function useRealtime(_role: 'viewer' | 'controller', _handlers: RealtimeH
           current.isPlaying !== nextState.isPlaying ||
           current.error !== nextState.error ||
           current.isLoading !== nextState.isLoading ||
-          current.playRate !== nextState.playRate
+          current.playRate !== nextState.playRate ||
+          current.basePosition !== nextState.basePosition ||
+          current.position !== nextState.position ||
+          current.updatedAt !== nextState.updatedAt
 
         if (!existing || didChange) {
           changed = true
@@ -170,9 +186,48 @@ export function useRealtime(_role: 'viewer' | 'controller', _handlers: RealtimeH
     [updateDeck],
   )
 
-  const requestDeckState = useCallback((_: DeckKey, __: DeckMediaStateIntent) => {
-    // No-op placeholder for compatibility
-  }, [])
+  const requestDeckState = useCallback(
+    (deckKey: DeckKey, intent: DeckMediaStateIntent) => {
+      const payload: Partial<DeckTimelineState> | undefined =
+        intent && 'intent' in intent && intent.intent === 'state'
+          ? intent.value ?? undefined
+          : 'intent' in intent
+            ? undefined
+            : (intent as Partial<DeckTimelineState>);
+
+      if (!payload) {
+        return;
+      }
+
+      setDeckMediaStates((previous) => {
+        const current = previous[deckKey] ?? createDefaultDeckTimelineState();
+        const next = { ...current, ...payload };
+
+        const changed =
+          current.src !== next.src ||
+          current.isPlaying !== next.isPlaying ||
+          current.playRate !== next.playRate ||
+          current.basePosition !== next.basePosition ||
+          current.position !== next.position ||
+          current.updatedAt !== next.updatedAt ||
+          current.duration !== next.duration ||
+          current.error !== next.error ||
+          current.isLoading !== next.isLoading ||
+          current.version !== next.version ||
+          current.commandId !== next.commandId;
+
+        if (!changed) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          [deckKey]: next,
+        }
+      })
+    },
+    [],
+  )
 
   const send = useCallback(
     (message: OutboundMessage) => {

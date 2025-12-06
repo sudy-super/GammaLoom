@@ -99,7 +99,7 @@ export interface DeckTimelineState {
 export const createDefaultDeckTimelineState = (): DeckTimelineState => ({
   src: null,
   isPlaying: false,
-  basePosition: 0,
+  basePosition: Number.NaN,
   position: Number.NaN,
   playRate: 1,
   updatedAt: 0,

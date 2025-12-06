@@ -229,6 +229,16 @@ const ViewerPage = () => {
         base.src = fallbackSrc;
       }
 
+      if (!Number.isFinite(base.updatedAt) || base.updatedAt <= 0) {
+        base.updatedAt = Date.now() / 1000;
+      }
+      if (!Number.isFinite(base.basePosition)) {
+        base.basePosition = 0;
+      }
+      if (!Number.isFinite(base.position)) {
+        base.position = 0;
+      }
+
       const timelinePlaying =
         typeof timeline?.isPlaying === 'boolean' ? timeline.isPlaying : undefined;
       const deckPlaying =
@@ -815,23 +825,18 @@ const ViewerPage = () => {
     }
 
     if (deck.type === 'video' && deck.assetId) {
-      const video = assets.videos.find((item) => item.id === deck.assetId);
-      if (!video) return null;
-      const baseTimeline = createDefaultDeckTimelineState();
-      const mediaState = {
-        ...baseTimeline,
-        src: video.url,
-        isPlaying: Boolean(deck.playing),
-        playRate: deck.speed ?? 1,
-      };
+      const state = resolveEffectiveMediaState(deckKey);
+      if (!state?.src) return null;
+
       return (
         <VideoFallbackLayer
           key={`deck-${deckKey}-${deck.assetId}`}
-          id={`mix-video-${deckKey}`}
-          src={video.url}
+          id={`viewer-${deckKey}`}
+          src={state.src}
           opacity={effectiveOpacity}
           blendMode={blendMode}
-          mediaState={mediaState}
+          mediaState={state}
+          disableTimeSync
           registerContainer={viewerVideoRefCallbacks[deckKey]}
         />
       );

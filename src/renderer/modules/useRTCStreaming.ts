@@ -7,7 +7,50 @@ interface UseRTCStreamingOptions {
   iceServers?: RTCConfiguration['iceServers'];
 }
 
-const DEFAULT_ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
+const resolveDefaultIceServers = (): RTCIceServer[] => {
+  const raw = import.meta.env?.VITE_RTC_ICE_SERVERS;
+  if (!raw || typeof raw !== 'string') {
+    return [];
+  }
+
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((entry) => {
+          if (!entry) {
+            return null;
+          }
+          if (typeof entry === 'string') {
+            return { urls: entry } satisfies RTCIceServer;
+          }
+          if (typeof entry === 'object' && 'urls' in entry) {
+            return entry as RTCIceServer;
+          }
+          return null;
+        })
+        .filter((entry): entry is RTCIceServer => Boolean(entry));
+    }
+    if (typeof parsed === 'string') {
+      return [{ urls: parsed }];
+    }
+  } catch {
+    // Fall through to comma-delimited parsing.
+  }
+
+  return trimmed
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean)
+    .map((url) => ({ urls: url }));
+};
+
+const DEFAULT_ICE_SERVERS: RTCIceServer[] = resolveDefaultIceServers();
 
 export function useRTCStreaming(
   onSignal?: (signal: RTCSignalMessage) => void,
