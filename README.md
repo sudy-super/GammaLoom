@@ -1,5 +1,60 @@
 # GammaLoom VJ Tool
 
+## 技術スタック概要 (日本語)
+- **アプリ形態**: Electron 33 デスクトップアプリ (2 ウィンドウ構成: Control / Projection)
+- **フロントエンド**: Vite + React 18 + TypeScript、CSS は Tailwind 3 系 + カスタム CSS
+- **ビルド/配布**: `vite-plugin-electron` でレンダラーを Vite ビルドし、`electron-builder` でパッケージング
+- **レンダラー機能**: React でデッキ UI、メディア管理 (`useVideoMedia`)、GLSL ジェネレーター & レンダラー、WebRTC 配信用ユーティリティ
+- **メインプロセス**: `MixEngine` (ミックス状態の単一ソース) と `AssetsManager` (動画/画像/GLSL のスキャン) を保持
+- **IPC/ブリッジ**: preload (`window.vj`) が型付き IPC を公開し、レンダラーからミックス更新・アセット取得を呼び出す
+- **メディア/シェーダ**: デフォルトで `assets/mp4` と `assets/glsl` を走査し、動画・画像・シェーダをデッキに割り当て可能。`glslCanvas` 依存を含む
+
+## アーキテクチャ
+```mermaid
+flowchart LR
+  subgraph Electron Main
+    A[MixEngine\n状態管理/検証]
+    B[AssetsManager\nアセット列挙]
+  end
+  subgraph Preload
+    C[window.vj\nIPC ブリッジ]
+  end
+  subgraph Renderer
+    subgraph Control Window (#/control)
+      D[React UI\nデッキ4基 + ブラウザ]
+      E[useRealtime\nIPCサブスク]
+      F[useVideoMedia\nHTMLVideo管理]
+    end
+    subgraph Projection Window (#/)
+      G[ViewerPage\nGLSLRenderer + Video合成]
+      H[useRTCStreaming\nオプション配信]
+    end
+  end
+  subgraph Assets
+    I[assets/mp4, assets/glsl\n(環境変数で追加可)]
+  end
+
+  I -- listAssets --> B
+  B -- Asset[] --> C
+  D <-- onMixState / invoke --> A
+  G <-- onMixState / invoke --> A
+  D <-- listAssets --> C
+  C <--> A
+  D -- Deck操作/クロスフェーダー --> C
+  G -- ビューア状態/RTC --> C
+```
+
+## 主要コンポーネントと責務
+- `src/main/mixEngine.ts`: Deck 状態とクロスフェーダー・マスターオパシティをバリデートしつつ保持。変化時に `mix:state` をブロードキャスト
+- `src/main/assetsManager.ts`: 動画/画像/GLSL を再帰スキャンし、`vjasset://` プロトコル URL を付与して返却
+- `src/main/windows.ts`: Control/Projection の 2 BrowserWindow を生成。開発時は Vite Dev Server、配布時は `dist` をロード
+- `src/preload/bridge.ts`: `window.vj` として IPC をエクスポート（状態取得・デッキ更新・アセット列挙・クロスフェーダー操作）
+- `src/renderer/modules/useRealtime.ts`: preload 経由で MixState/Asset を購読し、Control/Viewer 両画面で共通のリアルタイムデータソースを提供
+- `src/renderer/pages/control/ControlPage.tsx`: 4 デッキ UI、コンテンツブラウザ、マスター・クロスフェーダー UI、GLSL 生成のトリガーを担当
+- `src/renderer/pages/ViewerPage.tsx`: GLSLRenderer とビデオ合成を行い Projection に表示。WebRTC (`useRTCStreaming`) での配信開始にも対応
+
+---
+
 Electron + React + TypeScript application that delivers the two-window VJ workflow described in `vj-tool-spec.md`, inspired by the MuLoom UI patterns. It exposes a Control window (four decks, master preview, asset browser) and a Projection window that renders the mixed output in fullscreen-friendly canvas.
 
 ## Features
